@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rai-backend
+  namespace: rai-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rai-backend
+  template:
+    metadata:
+      labels:
+        app: rai-backend
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/your-org/rai-backend:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rai-secrets
+                  key: database-url
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka-svc.rai-platform.svc.cluster.local:9092"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rai-backend-svc
+  namespace: rai-platform
+spec:
+  selector:
+    app: rai-backend
+  ports:
+    - port: 8000
+      targetPort: 8000
+  type: ClusterIP

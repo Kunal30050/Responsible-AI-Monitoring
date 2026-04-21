@@ -1,0 +1,78 @@
+version: '3.9'
+
+services:
+  # ── PostgreSQL ──────────────────────────────────
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: rai_postgres
+    environment:
+      POSTGRES_USER: raiuser
+      POSTGRES_PASSWORD: raipassword
+      POSTGRES_DB: rai_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raiuser -d rai_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Apache Kafka (KRaft mode, no Zookeeper) ────
+  kafka:
+    image: bitnami/kafka:3.7
+    container_name: rai_kafka
+    environment:
+      - KAFKA_CFG_NODE_ID=0
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # ── Backend (FastAPI) ───────────────────────────
+  backend:
+    build: ./backend
+    container_name: rai_backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://raiuser:raipassword@postgres:5432/rai_platform
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      PAGERDUTY_API_KEY: ${PAGERDUTY_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+
+  # ── Frontend (Next.js) ──────────────────────────
+  frontend:
+    build: ./frontend
+    container_name: rai_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

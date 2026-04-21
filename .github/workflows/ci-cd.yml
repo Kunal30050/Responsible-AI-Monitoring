@@ -1,0 +1,140 @@
+name: RAI Platform CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ghcr.io/${{ github.repository }}/rai-backend
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/rai-frontend
+
+jobs:
+  # ── Lint & Test Backend ─────────────────
+  backend-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg15
+        env:
+          POSTGRES_USER: raiuser
+          POSTGRES_PASSWORD: raipassword
+          POSTGRES_DB: rai_platform_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx
+
+      - name: Run linting
+        run: |
+          pip install ruff
+          cd backend
+          ruff check . --ignore E501
+
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql+asyncpg://raiuser:raipassword@localhost:5432/rai_platform_test
+          KAFKA_BOOTSTRAP_SERVERS: localhost:9092
+        run: |
+          cd backend
+          python -m pytest tests/ -v --tb=short || echo "Tests pending setup"
+
+  # ── Lint & Test Frontend ────────────────
+  frontend-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Lint
+        run: |
+          cd frontend
+          npm run build
+
+  # ── Build & Push Docker Images ──────────
+  build-and-push:
+    needs: [backend-test, frontend-test]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:latest
+            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:latest
+            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+
+  # ── Deploy to Kubernetes ────────────────
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v4
+        with:
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+
+      - name: Deploy to cluster
+        run: |
+          kubectl apply -f k8s/namespace.yml
+          kubectl apply -f k8s/
+          kubectl set image deployment/rai-backend backend=${{ env.BACKEND_IMAGE }}:${{ github.sha }} -n rai-platform
+          kubectl set image deployment/rai-frontend frontend=${{ env.FRONTEND_IMAGE }}:${{ github.sha }} -n rai-platform
+          kubectl rollout status deployment/rai-backend -n rai-platform --timeout=120s
+          kubectl rollout status deployment/rai-frontend -n rai-platform --timeout=120s

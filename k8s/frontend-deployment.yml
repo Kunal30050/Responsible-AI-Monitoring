@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rai-frontend
+  namespace: rai-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rai-frontend
+  template:
+    metadata:
+      labels:
+        app: rai-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/your-org/rai-frontend:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NEXT_PUBLIC_API_URL
+              value: "http://rai-backend-svc.rai-platform.svc.cluster.local:8000"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "250m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rai-frontend-svc
+  namespace: rai-platform
+spec:
+  selector:
+    app: rai-frontend
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: LoadBalancer

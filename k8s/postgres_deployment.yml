@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: rai-platform
+spec:
+  serviceName: postgres-svc
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: timescale/timescaledb:latest-pg15
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rai-secrets
+                  key: pg-user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rai-secrets
+                  key: pg-password
+            - name: POSTGRES_DB
+              value: rai_platform
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-svc
+  namespace: rai-platform
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+  clusterIP: None
