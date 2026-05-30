@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/v1/drift", tags=["Drift Detection"])
 @router.post("/analyze", response_model=list[DriftMetricResponse])
 async def analyze_drift(payload: DriftAnalysisRequest, db: AsyncSession = Depends(get_db)):
     """Run drift detection comparing reference and current windows."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     ref_start = now - timedelta(hours=payload.reference_window_hours)
     cur_start = now - timedelta(hours=payload.current_window_hours)
 
@@ -105,7 +105,7 @@ async def analyze_drift(payload: DriftAnalysisRequest, db: AsyncSession = Depend
 
 @router.get("/{model_id}/history", response_model=list[DriftMetricResponse])
 async def get_drift_history(model_id: int, hours: int = 168, db: AsyncSession = Depends(get_db)):
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=hours)
     result = await db.execute(
         select(DriftMetric)
         .where(DriftMetric.model_id == model_id, DriftMetric.timestamp >= cutoff)

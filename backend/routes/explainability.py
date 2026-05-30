@@ -20,7 +20,7 @@ async def explain_prediction(payload: ExplainRequest, db: AsyncSession = Depends
     else:
         result = explainability_engine.explain_shap(payload.model_id, payload.instance)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # Store result
     record = ExplainabilityResult(

@@ -58,7 +58,7 @@ async def log_predictions_batch(payload: BatchPredictionInput):
 @router.get("/dashboard/summary", response_model=DashboardSummary)
 async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
     """Get high-level dashboard metrics."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     yesterday = now - timedelta(hours=24)
 
     # Total models

@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/v1/bias", tags=["Bias & Fairness"])
 @router.post("/analyze", response_model=list[BiasMetricResponse])
 async def analyze_bias(payload: BiasAnalysisRequest, db: AsyncSession = Depends(get_db)):
     """Run bias analysis on recent predictions for a model."""
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=payload.lookback_hours)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=hours)
 
     result = await db.execute(
         select(PredictionLog)
@@ -57,7 +57,7 @@ async def analyze_bias(payload: BiasAnalysisRequest, db: AsyncSession = Depends(
 
     # Store results and check alerts
     responses = []
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     for m in metrics:
         bias_record = BiasMetric(
             model_id=payload.model_id,
@@ -97,7 +97,7 @@ async def analyze_bias(payload: BiasAnalysisRequest, db: AsyncSession = Depends(
 @router.get("/{model_id}/history", response_model=list[BiasMetricResponse])
 async def get_bias_history(model_id: int, hours: int = 168, db: AsyncSession = Depends(get_db)):
     """Get historical bias metrics for a model."""
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=hours)
     result = await db.execute(
         select(BiasMetric)
         .where(BiasMetric.model_id == model_id, BiasMetric.timestamp >= cutoff)

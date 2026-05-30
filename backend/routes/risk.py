@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/v1/risk", tags=["Risk Scoring"])
 @router.post("/{model_id}/compute", response_model=RiskScoreResponse)
 async def compute_risk_score(model_id: int, hours: int = 24, db: AsyncSession = Depends(get_db)):
     """Compute composite risk score for a model."""
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=hours)
 
     # Fetch recent bias metrics
     bias_result = await db.execute(
@@ -42,7 +42,7 @@ async def compute_risk_score(model_id: int, hours: int = 24, db: AsyncSession = 
         drift_metrics=drift_metrics,
     )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # Store risk score
     record = RiskScore(
@@ -83,7 +83,7 @@ async def compute_risk_score(model_id: int, hours: int = 24, db: AsyncSession = 
 
 @router.get("/{model_id}/history", response_model=list[RiskScoreResponse])
 async def get_risk_history(model_id: int, hours: int = 168, db: AsyncSession = Depends(get_db)):
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=hours)
     result = await db.execute(
         select(RiskScore)
         .where(RiskScore.model_id == model_id, RiskScore.timestamp >= cutoff)

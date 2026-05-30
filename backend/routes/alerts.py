@@ -62,7 +62,7 @@ async def get_alert_history(
     model_id: int = None, hours: int = 168, limit: int = 100,
     db: AsyncSession = Depends(get_db)
 ):
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=hours)
     query = select(AlertHistory).where(AlertHistory.timestamp >= cutoff)
     if model_id:
         query = query.where(AlertHistory.model_id == model_id)
